@@ -471,8 +471,14 @@ namespace UnityEngine.Rendering.PostProcessing
                 context.PushDebugOverlay(context.command, m_AmbientOnlyAO, m_PropertySheet, (int)Pass.DebugOverlay);
         }
 
-        public void RenderAfterOpaque(PostProcessRenderContext context)
+        public void RenderAfterOpaque(PostProcessRenderContext context, RenderTexture forcedDestinationTarget)
         {
+            RenderTargetIdentifier destination;
+            if (forcedDestinationTarget == null)
+                destination = BuiltinRenderTextureType.CameraTarget;
+            else
+                destination = new RenderTargetIdentifier(forcedDestinationTarget);
+
             var cmd = context.command;
             cmd.BeginSample("Ambient Occlusion");
             SetResources(context.resources);
@@ -493,11 +499,11 @@ namespace UnityEngine.Rendering.PostProcessing
             GenerateAOMap(cmd, context.camera, m_AmbientOnlyAO, null, false, false);
             PushDebug(context);
             cmd.SetGlobalTexture(ShaderIDs.MSVOcclusionTexture, m_AmbientOnlyAO);
-            cmd.BlitFullscreenTriangle(BuiltinRenderTextureType.None, BuiltinRenderTextureType.CameraTarget, m_PropertySheet, (int)Pass.CompositionForward, RenderBufferLoadAction.Load);
+            cmd.BlitFullscreenTriangle(BuiltinRenderTextureType.None, destination, m_PropertySheet, (int)Pass.CompositionForward, RenderBufferLoadAction.Load);
             cmd.EndSample("Ambient Occlusion");
         }
 
-        public void RenderAmbientOnly(PostProcessRenderContext context)
+        public void RenderAmbientOnly(PostProcessRenderContext context, RenderTexture forcedDestinationTarget)
         {
             var cmd = context.command;
             cmd.BeginSample("Ambient Occlusion Render");
@@ -509,12 +515,18 @@ namespace UnityEngine.Rendering.PostProcessing
             cmd.EndSample("Ambient Occlusion Render");
         }
 
-        public void CompositeAmbientOnly(PostProcessRenderContext context)
+        public void CompositeAmbientOnly(PostProcessRenderContext context, RenderTexture forcedDestinationTarget)
         {
+            RenderTargetIdentifier destination;
+            if (forcedDestinationTarget == null)
+                destination = BuiltinRenderTextureType.CameraTarget;
+            else
+                destination = new RenderTargetIdentifier(forcedDestinationTarget);
+
             var cmd = context.command;
             cmd.BeginSample("Ambient Occlusion Composite");
             cmd.SetGlobalTexture(ShaderIDs.MSVOcclusionTexture, m_AmbientOnlyAO);
-            cmd.BlitFullscreenTriangle(BuiltinRenderTextureType.None, m_MRT, BuiltinRenderTextureType.CameraTarget, m_PropertySheet, (int)Pass.CompositionDeferred);
+            cmd.BlitFullscreenTriangle(BuiltinRenderTextureType.None, m_MRT, destination, m_PropertySheet, (int)Pass.CompositionDeferred);
             cmd.EndSample("Ambient Occlusion Composite");
         }
 

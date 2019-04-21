@@ -183,10 +183,19 @@ namespace UnityEngine.Rendering.PostProcessing
 
         bool m_NaNKilled = false;
 
+        RenderTexture m_ForcedRenderTexture = null;
+
         // Recycled list - used to reduce GC stress when gathering active effects in a bundle list
         // on each frame
         readonly List<PostProcessEffectRenderer> m_ActiveEffects = new List<PostProcessEffectRenderer>();
         readonly List<RenderTargetIdentifier> m_Targets = new List<RenderTargetIdentifier>();
+
+
+        public RenderTexture ForcedRenderTexture
+        {
+            get { return m_ForcedRenderTexture; }
+            set { m_ForcedRenderTexture = value; }
+        }
 
         void OnEnable()
         {
@@ -500,16 +509,16 @@ namespace UnityEngine.Rendering.PostProcessing
 
                 // Render as soon as possible - should be done async in SRPs when available
                 context.command = m_LegacyCmdBufferBeforeReflections;
-                ao.RenderAmbientOnly(context);
+                ao.RenderAmbientOnly(context, m_ForcedRenderTexture);
 
                 // Composite with GBuffer right before the lighting pass
                 context.command = m_LegacyCmdBufferBeforeLighting;
-                ao.CompositeAmbientOnly(context);
+                ao.CompositeAmbientOnly(context, m_ForcedRenderTexture);
             }
             else if (isAmbientOcclusionOpaque)
             {
                 context.command = m_LegacyCmdBufferOpaque;
-                aoRenderer.Get().RenderAfterOpaque(context);
+                aoRenderer.Get().RenderAfterOpaque(context, m_ForcedRenderTexture);
             }
 
             bool isFogActive = fog.IsEnabledAndSupported(context);
@@ -520,7 +529,11 @@ namespace UnityEngine.Rendering.PostProcessing
             opaqueOnlyEffects += hasCustomOpaqueOnlyEffects ? 1 : 0;
 
             // This works on right eye because it is resolved/populated at runtime
-            var cameraTarget = new RenderTargetIdentifier(BuiltinRenderTextureType.CameraTarget);
+            RenderTargetIdentifier cameraTarget;
+            if (m_ForcedRenderTexture == null)
+                cameraTarget = new RenderTargetIdentifier(BuiltinRenderTextureType.CameraTarget);
+            else
+                cameraTarget = new RenderTargetIdentifier(m_ForcedRenderTexture);
 
             if (opaqueOnlyEffects > 0)
             {
@@ -582,7 +595,11 @@ namespace UnityEngine.Rendering.PostProcessing
 #if UNITY_2019_1_OR_NEWER
             if (finalBlitToCameraTarget && !RuntimeUtilities.scriptableRenderPipelineActive)
             {
-                if (m_Camera.targetTexture)
+                if (m_ForcedRenderTexture)
+                {
+                    context.destination = m_ForcedRenderTexture.colorBuffer;
+                }
+                else if (m_Camera.targetTexture)
                 {
                     context.destination = m_Camera.targetTexture.colorBuffer;
                 }
