@@ -5,9 +5,9 @@ using UnityEngine.Assertions;
 
 namespace UnityEngine.Rendering.PostProcessing
 {
-#if UNITY_2017_2_OR_NEWER
+#if UNITY_2017_2_OR_NEWER && ENABLE_VR
     using XRSettings = UnityEngine.XR.XRSettings;
-#elif UNITY_5_6_OR_NEWER
+#elif UNITY_5_6_OR_NEWER && ENABLE_VR
     using XRSettings = UnityEngine.VR.VRSettings;
 #endif
 
@@ -75,7 +75,13 @@ namespace UnityEngine.Rendering.PostProcessing
         /// avoid post-processing artifacts cause by broken data in the scene.
         /// </summary>
         public bool stopNaNPropagation = true;
-        public bool finalBlitToCameraTarget = true;
+
+        /// <summary>
+        /// If <c>true</c>, it will render straight to the backbuffer and save the final blit done
+        /// by the engine. This has less overhead and will improve performance on lower-end platforms
+        /// (like mobiles) but breaks compatibility with legacy image effect that use OnRenderImage.
+        /// </summary>
+        public bool finalBlitToCameraTarget = false;
 
         /// <summary>
         /// The anti-aliasing method to use for this camera. By default it's set to <c>None</c>.
@@ -392,18 +398,33 @@ namespace UnityEngine.Rendering.PostProcessing
             if (m_Camera == null || m_CurrentContext == null)
                 InitLegacy();
 
+            // Postprocessing does tweak load/store actions when it uses render targets.
+            // But when using builtin render pipeline, Camera will silently apply viewport when setting render target,
+            //   meaning that Postprocessing might think that it is rendering to fullscreen RT
+            //   and use LoadAction.DontCare freely, which will ruin the RT if we are using viewport.
+            // It should actually check for having tiled architecture but this is not exposed to script,
+            // so we are checking for mobile as a good substitute
+            if(Application.isMobilePlatform)
+            {
+                Rect r = m_Camera.rect;
+                if(Mathf.Abs(r.x) > 1e-6f || Mathf.Abs(r.y) > 1e-6f || Mathf.Abs(1.0f - r.width) > 1e-6f || Mathf.Abs(1.0f - r.height) > 1e-6f)
+                {
+                    Debug.LogWarning("When used with builtin render pipeline, Postprocessing package expects to be used on a fullscreen Camera.\nPlease note that using Camera viewport may result in visual artefacts or some things not working.", m_Camera);
+                }
+            }
+
             // Resets the projection matrix from previous frame in case TAA was enabled.
             // We also need to force reset the non-jittered projection matrix here as it's not done
             // when ResetProjectionMatrix() is called and will break transparent rendering if TAA
             // is switched off and the FOV or any other camera property changes.
- 
+
 #if UNITY_2018_2_OR_NEWER
             if (!m_Camera.usePhysicalProperties)
 #endif
                 m_Camera.ResetProjectionMatrix();
             m_Camera.nonJitteredProjectionMatrix = m_Camera.projectionMatrix;
 
-#if !UNITY_SWITCH
+#if ENABLE_VR
             if (m_Camera.stereoEnabled)
             {
                 m_Camera.ResetStereoProjectionMatrices();
@@ -787,7 +808,7 @@ namespace UnityEngine.Rendering.PostProcessing
 
         void SetupContext(PostProcessRenderContext context)
         {
-            RuntimeUtilities.s_Resources = m_Resources;
+            RuntimeUtilities.UpdateResources(m_Resources);
 
             m_IsRenderingInSceneView = context.camera.cameraType == CameraType.SceneView;
             context.isSceneView = m_IsRenderingInSceneView;
